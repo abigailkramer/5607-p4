@@ -14,15 +14,12 @@
 
 const char* INSTRUCTIONS = 
 "***************\n"
-"This demo shows multiple objects being draw at once along with user interaction.\n"
+"The goal of this game is to find the big golden key in the maze.\n"
 "\n"
-"Up/down/left/right - Moves the knot.\n"
-"c - Changes to teapot to a random color.\n"
+"w/a/s/d - Moves the player.\n"
+"mouse movement - Lets the player look left/right.\n"
 "***************\n"
 ;
-
-//Mac OS build: g++ multiObjectTest.cpp -x c glad/glad.c -g -F/Library/Frameworks -framework SDL2 -framework OpenGL -o MultiObjTest
-//Linux build:  g++ multiObjectTest.cpp -x c glad/glad.c -g -lSDL2 -lSDL2main -lGL -ldl -I/usr/include/SDL2/ -o MultiObjTest
 
 #include "glad/glad.h"  //Include order can matter here
 #if defined(__APPLE__) || defined(__linux__)
@@ -69,7 +66,6 @@ GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 bool fullscreen = false;
 void Win2PPM(int width, int height);
 
-//srand(time(NULL));
 float rand01(){
 	return rand()/(float)RAND_MAX;
 }
@@ -456,11 +452,32 @@ int main(int argc, char *argv[]){
 
 
 			if (windowEvent.type == SDL_MOUSEMOTION) {
-				pitch += 0.1f * windowEvent.motion.xrel;
-				yaw -= 0.1f * windowEvent.motion.yrel;
+				//float xpos = windowEvent.motion.x;
+				//float ypos = windowEvent.motion.y;
 
-				if (yaw > 89.0f) yaw = 89.0f;
-				if (yaw < -89.0f) yaw = -89.0f;
+				float xOffset = windowEvent.motion.xrel;// xpos - lastX;
+				float yOffset = windowEvent.motion.yrel;// lastY - ypos;
+
+				xOffset *= 0.07f;
+				yOffset *= 0.07f;
+
+				yaw -= xOffset;
+				pitch -= yOffset;
+
+				//if (pitch > 179.0f) pitch = 179.0f;
+				//if (pitch < -179.0f) pitch = -179.0f;
+
+				//if (yaw > 179.0f) yaw = 179.0f;
+				//if (yaw < -179.0f) yaw = -179.0f;
+
+				glm::vec3 direction;
+				direction.x = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
+				direction.y = sin(glm::radians(yaw));
+				direction.z = 0;// sin(glm::radians(pitch))* cos(glm::radians(yaw));
+				cameraFront = glm::normalize(direction);
+
+				//pitch += 0.06f * windowEvent.motion.xrel;
+				//yaw -= 0.06f * windowEvent.motion.yrel;
 
 				SDL_WarpMouseInWindow(window, screenWidth / 2, screenHeight / 2);
 			}
@@ -470,29 +487,25 @@ int main(int argc, char *argv[]){
 			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_w) {
 				glm::vec3 temp = (cameraPos + 0.1f * cameraFront);
 				if (canMove(temp)) {
-					cameraPos.x += 0.1f * cameraFront.x;
-					cameraPos.y += 0.1f * cameraFront.y;
+					cameraPos += 0.1f * cameraFront;
 				}
 			}
 			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_s) {
 				glm::vec3 temp = (cameraPos - 0.1f * cameraFront);
 				if (canMove(temp)) {
-					cameraPos.x -= 0.1f * cameraFront.x;
-					cameraPos.y -= 0.1f * cameraFront.y;
+					cameraPos -= 0.1f * cameraFront;
 				}
 			}
 			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_a) {
 				glm::vec3 temp = cameraPos - (glm::normalize(glm::cross(cameraFront, cameraUp)) * 0.1f);
 				if (canMove(temp)) {
-					cameraPos.x -= glm::normalize(glm::cross(cameraFront, cameraUp)).x * 0.1f;
-					cameraPos.y -= glm::normalize(glm::cross(cameraFront, cameraUp)).y * 0.1f;
+					cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * 0.1f;
 				}
 			}
 			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_d) {
 				glm::vec3 temp = cameraPos + glm::normalize(glm::cross(cameraFront, cameraUp)) * 0.1f;
 				if (canMove(temp)) {
-					cameraPos.x += glm::normalize(glm::cross(cameraFront, cameraUp)).x * 0.1f;
-					cameraPos.y += glm::normalize(glm::cross(cameraFront, cameraUp)).y * 0.1f;
+					cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * 0.1f;
 				}
 				
 			}
@@ -542,19 +555,13 @@ int main(int argc, char *argv[]){
 
 		glBindVertexArray(vao);
 		drawGeometry(texturedShader, models);
-
-		glm::vec3 direction;
-		direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-		direction.y = -sin(glm::radians(pitch));
-		direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-		cameraFront = glm::normalize(direction);
 		
 		GLint uniProj = glGetUniformLocation(texturedShader, "proj");
-		glm::mat4 proj = glm::perspective(3.14f / 4, screenWidth / (float)screenHeight, 0.5f, 10.0f); //FOV, aspect, near, far
+		glm::mat4 proj = glm::perspective(3.14f / 4, screenWidth / (float)screenHeight, 0.01f, 10.0f); //FOV, aspect, near, far
 		glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 		
 		
-		glm::mat4 view = glm::lookAt(cameraPos, cameraPos + direction, cameraUp);
+		glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));	
 
 		SDL_GL_SwapWindow(window); //Double buffering
@@ -586,22 +593,6 @@ bool canMove(glm::vec3 dirVector) {
 			}
 		}
 	}
-
-	/*
-	for (int i = 0; i < doorNum; i++) {
-		if (!doors[i].unlocked) {
-			float minX = doors[i].x - 0.5;
-			float maxX = doors[i].x + 0.5;
-			float minY = doors[i].y - 0.5;
-			float maxY = doors[i].y + 0.5;
-
-			bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
-			if (intersects) {
-				return false;
-			}
-		}
-	}
-	*/
 
 	for (auto& w : walls) {
 		float minX = w.x - 0.5;
