@@ -30,6 +30,7 @@ const char* INSTRUCTIONS =
  #include <SDL2/SDL_opengl.h>
 #else
  #include <SDL.h>
+ #include <SDL_image.h>
  #include <SDL_opengl.h>
 #endif
 #include <cstdio>
@@ -42,7 +43,9 @@ const char* INSTRUCTIONS =
 #include <cstdio>
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <string>
+#include <sstream>
 
 using namespace std;
 
@@ -53,21 +56,13 @@ int mapWidth = 0;
 int mapHeight = 0;
 
 float colR=1, colG=1, colB=1;
-float lookX = 0, lookY = 0, lookZ = 0;
-
-int selfX=0, selfY=0;
-int endX=0, endY=0;
-
-
-// init look positions
-glm::vec3 camPos = glm::vec3(3.f, 0.f, 0.f);  //Cam Position
-glm::vec3 lookPoint = glm::vec3(0.0f, 0.0f, 0.0f);  //Look at point
-glm::vec3 up = glm::vec3(0.0f, 0.0f, 1.0f); //Up
 
 glm::vec3 cameraPos = glm::vec3(3.f, 0.f, 0.f);
 glm::vec3 cameraFront = glm::vec3(0.0f, 1.0f, 0.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 0.0f, 1.0f);
 
+float yaw = 0, pitch = 0;
+float lastX = screenWidth / 2, lastY = screenHeight / 2;
 
 bool DEBUG_ON = true;
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
@@ -79,12 +74,6 @@ float rand01(){
 	return rand()/(float)RAND_MAX;
 }
 
-struct mapItem {
-	char name;
-	int x;
-	int y;
-};
-
 struct modelInfo {
 	int start;
 	int numVerts;
@@ -93,10 +82,41 @@ struct modelInfo {
 struct player {
 	float x;
 	float y;
-	
 };
 
-void drawGeometry(int shaderProgram, modelInfo models[], mapItem objects[]);
+player self = { 0, 0 };
+player goal = { 0, 0 };
+
+struct door {
+	int x;
+	int y;
+	int tex;
+	bool unlocked;
+	char key;
+};
+
+struct key {
+	int x;
+	int y;
+	int tex;
+	bool picked_up;
+	char door;
+};
+
+struct wall {
+	float x;
+	float y;
+};
+
+vector<wall> walls;
+vector<door> doors;
+vector<key> keys;
+
+void drawGeometry(int shaderProgram, modelInfo models[]);
+vector<float> loadObjFile(string fileName);
+bool canMove(glm::vec3 dirVector);
+
+bool isFinished = false;
 
 int main(int argc, char *argv[]){
 	SDL_Init(SDL_INIT_VIDEO);  //Initialize Graphics (for OpenGL)
@@ -124,7 +144,6 @@ int main(int argc, char *argv[]){
 		return -1;
 	}
 	
-	//Here we will load two different model files 
 
 	//Load map file
 	ifstream modelFile;
@@ -134,66 +153,91 @@ int main(int argc, char *argv[]){
 	const int max = width * height;
 	mapWidth = width;
 	mapHeight = height;
-	mapItem* objects = new mapItem[max];
 	
-	int wallNum = 0;
-	int doorNum = 0;
-	int keyNum = 0;
-	int pos = 0;
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
 			char cur;
 			modelFile >> cur;
-			objects[pos] = { cur,i,j };
 			if (cur == 'W') {
-				wallNum++;
+				wall newWall = { i, j };
+				walls.push_back(newWall);
 			}
 			if (cur == 'A' || cur == 'B' || cur == 'C' || cur == 'D' || cur == 'E') {
-				doorNum++;
+				int temp = 0;
+				if (cur == 'A') temp = 2;
+				if (cur == 'B') temp = 3;
+				if (cur == 'C') temp = 4;
+				if (cur == 'D') temp = 5;
+				if (cur == 'E') temp = 6;
+				//doors[doorNum] = { i, j, temp, false, static_cast<char>(tolower(cur)) };
+				door newDoor = { i, j, temp, false, static_cast<char>(tolower(cur)) };
+				doors.push_back(newDoor);
 			}
 			if (cur == 'a' || cur == 'b' || cur == 'c' || cur == 'd' || cur == 'e') {
-				keyNum++;
+				int temp = 0;
+				if (cur == 'a') temp = 2;
+				if (cur == 'b') temp = 3;
+				if (cur == 'c') temp = 4;
+				if (cur == 'd') temp = 5;
+				if (cur == 'e') temp = 6;
+				//keys[keyNum] = { i, j, temp, false, cur };
+				key newKey = { i, j, temp, false, cur };
+				keys.push_back(newKey);
 			}
 			if (cur == 'S') {
-				selfX = i;
-				selfY = j;
+				self.x = i;
+				self.y = j;
 			}
 			if (cur == 'G') {
-				endX = i;
-				endY = j;
+				goal.x = i;
+				goal.y = j;
 			}
-			pos++;
 		}
 	}
 	modelFile.close();
 
-	
+	// add outer wall objects
 
-	//Load Model 1
-	modelFile.open("models/teapot.txt");
+	for (int i = 0; i < mapWidth; i++) {
+		wall wall_one = { -1.f, i };
+		walls.push_back(wall_one);
+
+		wall wall_two = { mapHeight, i };
+		walls.push_back(wall_two);
+	}
+
+	for (int i = 0; i < mapHeight; i++) {
+		wall wall_one = { i, -1.f };
+		walls.push_back(wall_one);
+
+		wall wall_two = { i, mapWidth };
+		walls.push_back(wall_two);
+	}
+
 	int numLines = 0;
-	modelFile >> numLines;
-	float* model1 = new float[numLines];
-	for (int i = 0; i < numLines; i++){
-		modelFile >> model1[i];
-	}
-	printf("%d\n",numLines);
-	int numVerts1 = numLines/8;
-	modelFile.close();
-	
-	//Load Model 2
-	modelFile.open("models/knot.txt");
-	numLines = 0;
-	modelFile >> numLines;
-	float* model2 = new float[numLines];
-	for (int i = 0; i < numLines; i++){
-		modelFile >> model2[i];
-	}
-	printf("%d\n",numLines);
-	int numVerts2 = numLines/8;
-	modelFile.close();
 
-	//Load Model 3
+	// Load Door object
+	vector<float> model1_info = loadObjFile("models/door/swapped.obj");
+	numLines = model1_info.size();
+	float* model1 = new float[numLines];
+	
+	for (int i = 0; i < numLines; i++) {
+		model1[i] = model1_info[i];
+	}
+	int numVerts1 = numLines/8;
+
+	// Load Key object
+	vector<float> model2_info = loadObjFile("models/keys/key.obj");
+	numLines = model2_info.size();
+	float* model2 = new float[numLines];
+
+	for (int i = 0; i < numLines; i++) {
+		model2[i] = model2_info[i];
+	}
+
+	int numVerts2 = numLines/8;
+
+	//Load Cube
 	modelFile.open("models/cube.txt");
 	numLines = 0;
 	modelFile >> numLines;
@@ -204,12 +248,8 @@ int main(int argc, char *argv[]){
 	printf("%d\n",numLines);
 	int numVerts3 = numLines/8;
 	modelFile.close();
-	
 
-	
-	//SJG: I load each model in a different array, then concatenate everything in one big array
-	// This structure works, but there is room for improvement here. Eg., you should store the start
-	// and end of each model a data structure or array somewhere.
+
 	//Concatenate model arrays
 	float* modelData = new float[(numVerts1 + numVerts2 + numVerts3)*8];
 	copy(model1, model1+ numVerts1 *8, modelData);
@@ -220,15 +260,14 @@ int main(int argc, char *argv[]){
 	int startVert2 = numVerts1;
 	int startVert3 = numVerts1 + numVerts2;
 
-	//modelInfo* models = new modelInfo[3]; // 3 models - cube, knot, teapot (for example)
 	modelInfo models[3];
 	
 	models[0] = { startVert1, numVerts1 };
 	models[1] = { startVert2, numVerts2 };
 	models[2] = { startVert3, numVerts3 };
 	
-	//// Allocate Texture 0 (Wood) ///////
-	SDL_Surface* surface = SDL_LoadBMP("wood.bmp");
+	//// Allocate Texture 0 (walls) ///////
+	SDL_Surface* surface = SDL_LoadBMP("models/textures/gray_brick.bmp");
 	if (surface==NULL){ //If it failed, print the error
         printf("Error: \"%s\"\n",SDL_GetError()); return 1;
     }
@@ -237,46 +276,120 @@ int main(int argc, char *argv[]){
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex0);
-    
-    //What to do outside 0-1 range
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    
-    //Load the texture into memory
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface->w,surface->h, 0, GL_BGR,GL_UNSIGNED_BYTE,surface->pixels);
-    glGenerateMipmap(GL_TEXTURE_2D); //Mip maps the texture
-    
+    glGenerateMipmap(GL_TEXTURE_2D);
     SDL_FreeSurface(surface);
     //// End Allocate Texture ///////
 
 
-	//// Allocate Texture 1 (Brick) ///////
-	SDL_Surface* surface1 = SDL_LoadBMP("brick.bmp");
+	//// Allocate Texture 1 (floor) ///////
+	SDL_Surface* surface1 = SDL_LoadBMP("models/textures/plank_floor.bmp");
 	//SDL_Surface* surface1 = SDL_LoadFile("")
-	if (surface==NULL){ //If it failed, print the error
+	if (surface1==NULL){ //If it failed, print the error
         printf("Error: \"%s\"\n",SDL_GetError()); return 1;
     }
     GLuint tex1;
     glGenTextures(1, &tex1);
     
-    //Load the texture into memory
     glActiveTexture(GL_TEXTURE1);
-    
     glBindTexture(GL_TEXTURE_2D, tex1);
-    //What to do outside 0-1 range
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    //How to filter
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface1->w,surface1->h, 0, GL_BGR,GL_UNSIGNED_BYTE,surface1->pixels);
-    glGenerateMipmap(GL_TEXTURE_2D); //Mip maps the texture
-    
+    glGenerateMipmap(GL_TEXTURE_2D);
     SDL_FreeSurface(surface1);
+
 	//// End Allocate Texture ///////
+
+
+	//// Allocate Texture 2 ///////
+	SDL_Surface* surface2 = SDL_LoadBMP("models/textures/fuschia.bmp");
+	if (surface2 == NULL) { //If it failed, print the error
+		printf("Error: \"%s\"\n", SDL_GetError()); return 1;
+	}
+	GLuint tex2;
+	glGenTextures(1, &tex2);
+
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, tex2);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface2->w, surface2->h, 0, GL_BGR, GL_UNSIGNED_BYTE, surface2->pixels);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SDL_FreeSurface(surface2);
+	//// End Allocate Texture ///////
+
+	//// Allocate Texture 3 ///////
+	SDL_Surface* surface3 = SDL_LoadBMP("models/textures/orange.bmp");
+	if (surface3 == NULL) { //If it failed, print the error
+		printf("Error: \"%s\"\n", SDL_GetError()); return 1;
+	}
+	GLuint tex3;
+	glGenTextures(1, &tex3);
+
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, tex3);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface3->w, surface3->h, 0, GL_BGR, GL_UNSIGNED_BYTE, surface3->pixels);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SDL_FreeSurface(surface3);
+	//// End Allocate Texture ///////
+
+	//// Allocate Texture 4 ///////
+	SDL_Surface* surface4 = SDL_LoadBMP("models/textures/dark-green.bmp");
+	if (surface2 == NULL) { //If it failed, print the error
+		printf("Error: \"%s\"\n", SDL_GetError()); return 1;
+	}
+	GLuint tex4;
+	glGenTextures(1, &tex4);
+
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, tex4);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface4->w, surface4->h, 0, GL_BGR, GL_UNSIGNED_BYTE, surface4->pixels);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SDL_FreeSurface(surface4);
+	//// End Allocate Texture ///////
+
+	//// Allocate Texture 5 ///////
+	SDL_Surface* surface5 = SDL_LoadBMP("models/textures/blue.bmp");
+	if (surface5 == NULL) { //If it failed, print the error
+		printf("Error: \"%s\"\n", SDL_GetError()); return 1;
+	}
+	GLuint tex5;
+	glGenTextures(1, &tex5);
+
+	glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, tex5);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface5->w, surface5->h, 0, GL_BGR, GL_UNSIGNED_BYTE, surface5->pixels);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SDL_FreeSurface(surface5);
+	//// End Allocate Texture ///////
+
+	//// Allocate Texture 6 ///////
+	SDL_Surface* surface6 = SDL_LoadBMP("models/textures/purple.bmp");
+	if (surface6 == NULL) { //If it failed, print the error
+		printf("Error: \"%s\"\n", SDL_GetError()); return 1;
+	}
+	GLuint tex6;
+	glGenTextures(1, &tex6);
+
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, tex6);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface6->w, surface6->h, 0, GL_BGR, GL_UNSIGNED_BYTE, surface6->pixels);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SDL_FreeSurface(surface6);
+	//// End Allocate Texture ///////
+
 	
 	//Build a Vertex Array Object (VAO) to store mapping of shader attributse to VBO
 	GLuint vao;
@@ -316,73 +429,78 @@ int main(int argc, char *argv[]){
 
 	glBindVertexArray(0); //Unbind the VAO in case we want to create a new one	
 
-	cameraPos = glm::vec3(selfX,selfY,0.5);
+	cameraPos = glm::vec3(self.x,self.y,0.5);
 	
 	glEnable(GL_DEPTH_TEST);  
+	SDL_SetRelativeMouseMode(SDL_TRUE);
+	SDL_WarpMouseInWindow(window, screenWidth / 2, screenHeight / 2);
 
 	printf("%s\n",INSTRUCTIONS);
 	
-	//Event Loop (Loop forever processing each event as fast as possible)
 
 	SDL_Event windowEvent;
+	float lastX = 0;
+	float lastY = 0;
+	float currX = screenWidth / 2;
+	float currY = screenHeight / 2;
+	
 	bool quit = false;
 	while (!quit){
 		while (SDL_PollEvent(&windowEvent)){  //inspect all events in the queue
-
+			if (isFinished) quit = true;
 			if (windowEvent.type == SDL_QUIT) quit = true;
-			//List of keycodes: https://wiki.libsdl.org/SDL_Keycode - You can catch many special keys
-			//Scancode referes to a keyboard position, keycode referes to the letter (e.g., EU keyboards)
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_ESCAPE) 
 				quit = true; //Exit event loop
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_q)
 				quit = true; //Exit event loop
 
-			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_c){ //If "c" is pressed
-				colR = rand01();
-				colG = rand01();
-				colB = rand01();
-			}
 
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_LEFT) {
-				lookX += .1;
-			}
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_RIGHT) {
-				lookX -= .1;
-			}
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_UP) {
-				if (lookY > -0.6) {
-					//lookY += .1;
-				}
-			}
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_DOWN) {
-				if (lookY < 0.6) {
-					//lookY -= .1;
-				}
-			}
+			if (windowEvent.type == SDL_MOUSEMOTION) {
+				pitch += 0.1f * windowEvent.motion.xrel;
+				yaw -= 0.1f * windowEvent.motion.yrel;
 
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_w) {
-				cameraPos += 0.1f * cameraFront;
-			}
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_s) {
-				cameraPos -= 0.1f * cameraFront;
-			}
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_a) {
-				cameraPos -= 0.1f * glm::normalize(glm::cross(cameraFront, cameraUp));
-			}
-			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_d) {
-				cameraPos += 0.1f * glm::normalize(glm::cross(cameraFront, cameraUp));
+				if (yaw > 89.0f) yaw = 89.0f;
+				if (yaw < -89.0f) yaw = -89.0f;
+
+				SDL_WarpMouseInWindow(window, screenWidth / 2, screenHeight / 2);
 			}
 
 			
-			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r) {
-				// grab the closest key
-				// interact function or something
+			// check for collisions + avoid changing cameraPos.z
+			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_w) {
+				glm::vec3 temp = (cameraPos + 0.1f * cameraFront);
+				if (canMove(temp)) {
+					cameraPos.x += 0.1f * cameraFront.x;
+					cameraPos.y += 0.1f * cameraFront.y;
+				}
 			}
-			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_f) {
-				// use key in hand on closest door
+			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_s) {
+				glm::vec3 temp = (cameraPos - 0.1f * cameraFront);
+				if (canMove(temp)) {
+					cameraPos.x -= 0.1f * cameraFront.x;
+					cameraPos.y -= 0.1f * cameraFront.y;
+				}
+			}
+			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_a) {
+				glm::vec3 temp = cameraPos - (glm::normalize(glm::cross(cameraFront, cameraUp)) * 0.1f);
+				if (canMove(temp)) {
+					cameraPos.x -= glm::normalize(glm::cross(cameraFront, cameraUp)).x * 0.1f;
+					cameraPos.y -= glm::normalize(glm::cross(cameraFront, cameraUp)).y * 0.1f;
+				}
+			}
+			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_d) {
+				glm::vec3 temp = cameraPos + glm::normalize(glm::cross(cameraFront, cameraUp)) * 0.1f;
+				if (canMove(temp)) {
+					cameraPos.x += glm::normalize(glm::cross(cameraFront, cameraUp)).x * 0.1f;
+					cameraPos.y += glm::normalize(glm::cross(cameraFront, cameraUp)).y * 0.1f;
+				}
+				
 			}
 
 		}
+
+		self.x = cameraPos.x;
+		self.y = cameraPos.y;
         
 		// Clear the screen to default color
 		glClearColor(.2f, 0.4f, 0.8f, 1.0f);
@@ -391,7 +509,8 @@ int main(int argc, char *argv[]){
 		glUseProgram(texturedShader);
 
 
-		timePast = SDL_GetTicks()/1000.f; 		
+		timePast = SDL_GetTicks()/1000.f;
+		
 
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex0);
@@ -401,26 +520,45 @@ int main(int argc, char *argv[]){
 		glBindTexture(GL_TEXTURE_2D, tex1);
 		glUniform1i(glGetUniformLocation(texturedShader, "tex1"), 1);
 
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, tex2);
+		glUniform1i(glGetUniformLocation(texturedShader, "tex2"), 2);
+
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, tex3);
+		glUniform1i(glGetUniformLocation(texturedShader, "tex3"), 3);
+
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, tex4);
+		glUniform1i(glGetUniformLocation(texturedShader, "tex4"), 4);
+
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, tex5);
+		glUniform1i(glGetUniformLocation(texturedShader, "tex5"), 5);
+
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_2D, tex6);
+		glUniform1i(glGetUniformLocation(texturedShader, "tex6"), 6);
+
 		glBindVertexArray(vao);
-		drawGeometry(texturedShader, models, objects);
+		drawGeometry(texturedShader, models);
 
 		glm::vec3 direction;
-		direction.x = cos(lookY)* cos(lookX);
-		direction.y = sin(lookX);
-		direction.z = sin(lookY)* cos(lookX);
+		direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+		direction.y = -sin(glm::radians(pitch));
+		direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
 		cameraFront = glm::normalize(direction);
 		
-		// move forward/backwards
-		GLint uniProj = glGetUniformLocation(texturedShader, "proj"); //(posZ) *
-		glm::mat4 proj = glm::perspective(3.14f / 4, screenWidth / (float)screenHeight, 1.0f, 10.0f); //FOV, aspect, near, far
+		GLint uniProj = glGetUniformLocation(texturedShader, "proj");
+		glm::mat4 proj = glm::perspective(3.14f / 4, screenWidth / (float)screenHeight, 0.5f, 10.0f); //FOV, aspect, near, far
 		glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 		
-		// move left/right
-		//GLint uniView = glGetUniformLocation(texturedShader, "view");
-		glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+		
+		glm::mat4 view = glm::lookAt(cameraPos, cameraPos + direction, cameraUp);
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));	
 
 		SDL_GL_SwapWindow(window); //Double buffering
+		
 	}
 	
 	//Clean Up
@@ -433,10 +571,60 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-void drawGeometry(int shaderProgram, modelInfo models[], mapItem objects[]) {
+bool canMove(glm::vec3 dirVector) {
+
+	for (auto& d : doors) {
+		if (!d.unlocked) {
+			float minX = d.x - 0.5;
+			float maxX = d.x + 0.5;
+			float minY = d.y - 0.5;
+			float maxY = d.y + 0.5;
+
+			bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
+			if (intersects) {
+				return false;
+			}
+		}
+	}
+
+	/*
+	for (int i = 0; i < doorNum; i++) {
+		if (!doors[i].unlocked) {
+			float minX = doors[i].x - 0.5;
+			float maxX = doors[i].x + 0.5;
+			float minY = doors[i].y - 0.5;
+			float maxY = doors[i].y + 0.5;
+
+			bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
+			if (intersects) {
+				return false;
+			}
+		}
+	}
+	*/
+
+	for (auto& w : walls) {
+		float minX = w.x - 0.5;
+		float maxX = w.x + 0.5;
+		float minY = w.y - 0.5;
+		float maxY = w.y + 0.5;
+
+		// if that's true, return false
+		bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
+		if (intersects) {
+			return false;
+		}
+	}
+	
+
+	return true;
+}
+
+
+void drawGeometry(int shaderProgram, modelInfo models[]) {
 
 	GLint uniColor = glGetUniformLocation(shaderProgram, "inColor");
-	glm::vec3 colVec(colR, colG, colB);
+	glm::vec3 colVec(0.7, 0.7, 0.1);
 	glUniform3fv(uniColor, 1, glm::value_ptr(colVec));
 
 
@@ -444,184 +632,207 @@ void drawGeometry(int shaderProgram, modelInfo models[], mapItem objects[]) {
 	glm::mat4 model = glm::mat4(1);
 	GLint uniModel = glGetUniformLocation(shaderProgram, "model");
 	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model)); //pass model matrix to shader
+	GLint uniScale = glGetUniformLocation(shaderProgram, "textureScale");
+	glm::vec2 scale = glm::vec2(1);
 
-
-	//**************************
-	// 	   outside walls
-	//**************************
-
-	//model = glm::mat4(1);
-	//model = glm::scale(model, glm::vec3(mapHeight, 1, 2));
-
-	for (int i = 0; i < mapHeight; i++) {
-		for (int j = 0; j < 2; j++) {
-			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(i, -1, j));
-			glUniform1i(uniTexID, 1);
-			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-
-			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(i, mapWidth, j));
-			glUniform1i(uniTexID, 1);
-			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-		}
-	}
-
-	for (int i = 0; i < mapWidth; i++) {
-		for (int j = 0; j < 2; j++) {
-			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(-1, i, j));
-			glUniform1i(uniTexID, 1);
-			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-
-			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(mapHeight, i, j));
-			glUniform1i(uniTexID, 1);
-			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-		}
-	}
 
 	//**************************
 	// 	   in-map objects
 	//**************************
 
-	for (int i = 0; i < (mapWidth * mapHeight); i++) {
-		mapItem cur = objects[i];
+	// goal object - big yellow key
+	model = glm::mat4(1);
+	model = glm::translate(model, glm::vec3(goal.x, goal.y, 1));
+	model = glm::scale(model, glm::vec3(0.5, 0.5, 0.5));
+	model = glm::rotate(model, glm::radians(90.f), glm::vec3(0, 1, 0));
+	scale = glm::vec2(1, 1);
+	glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+	glUniform1i(uniTexID, -1);
+	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+	glDrawArrays(GL_TRIANGLES, models[1].start, models[1].numVerts);
+	if (abs(self.x - goal.x) < 1.f && abs(self.y - goal.y) < 1.f) {
+		isFinished = true;
+	}
 
-		model = glm::mat4(1);
-		model = glm::translate(model, glm::vec3(cur.x, cur.y, -1));
-		glUniform1i(uniTexID, 0);
-		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-		glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-
-		model = glm::mat4(1);
-		model = glm::translate(model, glm::vec3(cur.x, cur.y, 2));
-		glUniform1i(uniTexID, -1);
-		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-		glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-
-		if (cur.name == 'W') {
+	for (auto& d : doors) {
+		if (!d.unlocked) {
 			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(cur.x, cur.y, 0));
-			glUniform1i(uniTexID, 1);
+			model = glm::translate(model, glm::vec3(d.x, d.y, -0.5));
+			scale = glm::vec2(1, 1);
+			glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+			glUniform1i(uniTexID, d.tex);
 			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
+			glDrawArrays(GL_TRIANGLES, models[0].start, models[0].numVerts);
 
-			// makes the walls 2x as high -- adjust camera position if keeping this (really low rn)
-			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(cur.x, cur.y, 1));
-			glUniform1i(uniTexID, 1);
-			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-		}
-		else if (cur.name == 'A' || cur.name == 'B' || cur.name == 'C' || cur.name == 'D' || cur.name == 'E') {	// door
-			
-		}
-		else if (cur.name == 'a' || cur.name == 'b' || cur.name == 'c' || cur.name == 'd' || cur.name == 'e') {	// key
-			//colVec = glm::vec3(0.7, 0.1, 0.7);
-			//glUniform3fv(uniColor, 1, glm::value_ptr(colVec));
-			
-			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(cur.x, cur.y, 0));
-			//model = glm::scale(model, glm::vec3(20, 20, 20));
-			glUniform1i(uniTexID, -1);
-			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-			glDrawArrays(GL_TRIANGLES, models[1].start, models[1].numVerts);
-		}
-		else if (cur.name == 'G') {	// end
-			
+			if (abs(self.x - d.x) < 1.f && abs(self.y - d.y) < 1.f) {
+				for (auto& k : keys) {
+					if (k.picked_up && k.door == d.key) {
+						d.unlocked = true;
+					}
+				}
+			}
 		}
 		else {
 			continue;
 		}
 	}
 
+
+	for (auto& k : keys) {
+		if (!k.picked_up) {
+			model = glm::mat4(1);
+			model = glm::translate(model, glm::vec3(k.x, k.y, 0.3));
+			model = glm::scale(model, glm::vec3(0.3, 0.3, 0.3));
+			model = glm::rotate(model, glm::radians(90.f), glm::vec3(0, 1, 0));
+
+			scale = glm::vec2(1, 1);
+			glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+			glUniform1i(uniTexID, k.tex);
+			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+			glDrawArrays(GL_TRIANGLES, models[1].start, models[1].numVerts);
+
+			// check if close enough
+			if (abs(self.x - k.x) < 1.f && abs(self.y - k.y) < 1.f) {
+				k.picked_up = true;
+			}
+		}
+		else {
+			continue;
+		}
+	}
+
+
+	for (auto& w : walls) {
+		model = glm::mat4(1);
+		model = glm::translate(model, glm::vec3(w.x, w.y, 0.5));
+		model = glm::scale(model, glm::vec3(1, 1, 2));
+		scale = glm::vec2(1, 2);
+		glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+		glUniform1i(uniTexID, 0);
+		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+		glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
+	}
+
+	//**************************
+	// 	   floor & ceiling
+	//**************************
+
+	//floor
+	model = glm::mat4(1);
+	model = glm::translate(model, glm::vec3(mapWidth / 2, mapHeight / 2, -0.75));
+	model = glm::scale(model, glm::vec3(mapWidth + 1, mapHeight + 1, 0.5));
+	scale = glm::vec2(5, 5);
+	glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+	glUniform1i(uniTexID, 1);
+	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+	glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
+
+	//ceiling
+	model = glm::mat4(1);
+	model = glm::translate(model, glm::vec3(mapWidth / 2, mapHeight / 2, 1.75));
+	model = glm::scale(model, glm::vec3(mapWidth + 1, mapHeight + 1, 0.5));
+	scale = glm::vec2(5, 5);
+	glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+	glUniform1i(uniTexID, 1);
+	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+	glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
+
 }
 
-//void drawGeometry(int shaderProgram, modelInfo models[]){
-//	
-//	GLint uniColor = glGetUniformLocation(shaderProgram, "inColor");
-//	glm::vec3 colVec(colR,colG,colB);
-//	glUniform3fv(uniColor, 1, glm::value_ptr(colVec));
-//
-//    
-//    GLint uniTexID = glGetUniformLocation(shaderProgram, "texID");
-//	  
-//	//************
-//	//Draw model #1 the first time
-//	//This model is stored in the VBO starting a offest model1_start and with model1_numVerts num of verticies
-//	//*************
-//
-//	//Rotate model (matrix) based on how much time has past
-//	glm::mat4 model = glm::mat4(1);
-//	//model = glm::rotate(model,timePast * 3.14f/2,glm::vec3(0.0f, 1.0f, 1.0f));
-//	//model = glm::rotate(model,timePast * 3.14f/4,glm::vec3(1.0f, 0.0f, 0.0f));
-//	//model = glm::scale(model,glm::vec3(.2f,.2f,.2f)); //An example of scale // baby teapot
-//	GLint uniModel = glGetUniformLocation(shaderProgram, "model");
-//	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model)); //pass model matrix to shader
-//
-//	//Set which texture to use (-1 = no texture)
-//	glUniform1i(uniTexID, -1); 
-//
-//	//Draw an instance of the model (at the position & orientation specified by the model matrix above)
-//	//glDrawArrays(GL_TRIANGLES, models[0].start, models[0].numVerts);
-//	
-//	
-//	//************
-//	//Draw model #1 the second time
-//	//This model is stored in the VBO starting a offest model1_start and with model1_numVerts num. of verticies
-//	//*************
-//
-//	//Translate the model (matrix) left and back
-//	model = glm::mat4(1); //Load intentity
-//	model = glm::translate(model,glm::vec3(-2,-1,-.4));
-//	//model = glm::scale(model,2.f*glm::vec3(1.f,1.f,0.5f)); //scale example
-//	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-//
-//	//Set which texture to use (0 = wood texture ... bound to GL_TEXTURE0)
-//	glUniform1i(uniTexID, 0);
-//	//glDrawArrays(GL_TRIANGLES, models[1].start, models[1].numVerts);
-//
-//		
-//	//************
-//	//Draw model #2 once
-//	//This model is stored in the VBO starting a offest model2_start and with model2_numVerts num of verticies
-//	//*************
-//
-//	//Translate the model (matrix) based on where objx/y/z is
-//	// ... these variables are set when the user presses the arrow keys
-//	model = glm::mat4(1);
-//	model = glm::scale(model,glm::vec3(.8f,.8f,.8f)); //scale this model
-//	model = glm::translate(model,glm::vec3(objx,objy,objz));
-//
-//	//Set which texture to use (1 = brick texture ... bound to GL_TEXTURE1)
-//	glUniform1i(uniTexID, 1); 
-//	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-//	//glDrawArrays(GL_TRIANGLES, models[0].start, models[0].numVerts);
-//	
-//
-//	//************
-//	//Draw cubes a lot?
-//	//This model is stored in the VBO starting a offest model2_start and with model2_numVerts num of verticies
-//	//*************
-//	//model = glm::mat4(1);
-//
-//	//glUniform1i(uniTexID, 1);
-//	//glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-//	//glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-//	for (int i = 0; i < 4; i++) {
-//		model = glm::mat4(1);
-//		model = glm::translate(model, glm::vec3(i, 0, 0));
-//
-//		glUniform1i(uniTexID, 1);
-//		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-//		glDrawArrays(GL_TRIANGLES, models[2].start, models[2].numVerts);
-//	}
-//}
+vector<float> loadObjFile(string fileName) {
+	ifstream objFile;
+
+	int numLines = 0;
+	vector< glm::vec3 > v;
+	vector< glm::vec2 > vt;
+	vector< glm::vec3 > vn;
+	vector< float > info;
+
+	objFile.open(fileName);
+
+	//string type;
+	string line;
+	while (getline(objFile, line)) {
+		istringstream ss(line);
+		string type;
+		ss >> type;
+
+		if (type[0] == '#') {
+			//cout << "skipping comment line" << endl;
+			continue;
+		}
+		else if (type == "v") {
+			string string_x, string_y, string_z;
+			ss >> string_x >> string_y >> string_z;
+			float x, y, z;
+			x = atof(string_x.c_str());
+			y = atof(string_y.c_str());
+			z = atof(string_z.c_str());
+			v.push_back(glm::vec3(x, y, z));
+		}
+		else if (type == "vt") {
+			string string_u, string_v;
+			ss >> string_u >> string_v;
+			float u, v;
+			u = atof(string_u.c_str());
+			v = atof(string_v.c_str());
+			vt.push_back(glm::vec2(u, v));
+		}
+		else if (type == "vn") {
+			string string_x, string_y, string_z;
+			ss >> string_x >> string_y >> string_z;
+			float xn, yn, zn;
+			xn = atof(string_x.c_str());
+			yn = atof(string_y.c_str());
+			zn = atof(string_z.c_str());
+			vn.push_back(glm::vec3(xn, yn, zn));
+		}
+		else if (type == "f") {	// only reads triangulated .obj files
+			vector< glm::vec3 > ref;
+			string vert;
+
+			int numVerts = 0;
+			while (ss >> vert) {
+				istringstream vertSS(vert);
+				string subv, subvt, subvn;
+				getline(vertSS, subv, '/');
+				getline(vertSS, subvt, '/');
+				getline(vertSS, subvn, '/');
+				int v_num = atoi(subv.c_str());
+				int vt_num = atoi(subvt.c_str());
+				int vn_num = atoi(subvn.c_str());
+				ref.push_back(glm::vec3(v_num, vt_num, vn_num));
+				numVerts++;
+			}
+
+			for (int i = 0; i < numVerts; i++) {
+				int v_pos = ref[i].x - 1;
+				int vt_pos = ref[i].y - 1;
+				int vn_pos = ref[i].z - 1;
+
+				info.push_back(v[v_pos].x);
+				info.push_back(v[v_pos].y);
+				info.push_back(v[v_pos].z);
+
+				info.push_back(vt[vt_pos].x);
+				info.push_back(vt[vt_pos].y);
+
+				info.push_back(vn[vn_pos].x); // go back and do each of them (x,y,z) (x,y) (x,y,z)
+				info.push_back(vn[vn_pos].y);
+				info.push_back(vn[vn_pos].z);
+			}
+
+		}
+		else {
+			//cout << "WARNING: unknown command" << endl;
+			continue;
+		}
+	}
+	objFile.close();
+
+	return info;
+}
+
 
 // Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile){
