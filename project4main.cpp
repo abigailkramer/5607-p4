@@ -1,23 +1,11 @@
-//Multi-Object, Multi-Texture Example
-//Stephen J. Guy, 2021
 
-//This example demonstrates:
-// Loading multiple models (a cube and a knot)
-// Using multiple textures (wood and brick)
-// Instancing (the teapot is drawn in two locations)
-// Continuous keyboard input - arrows (moves knot up/down/left/right continuous when being held)
-// Keyboard modifiers - shift (up/down arrows move knot in/out of screen when shift is pressed)
-// Single key events - pressing 'c' changes color of a random teapot
-// Mixing textures and colors for models
-// Phong lighting
-// Binding multiple textures to one shader
 
 const char* INSTRUCTIONS = 
 "***************\n"
-"This demo shows multiple objects being draw at once along with user interaction.\n"
+"The goal of this game is to find the big yellow key in the maze.\n"
 "\n"
-"Up/down/left/right - Moves the knot.\n"
-"c - Changes to teapot to a random color.\n"
+"w/a/s/d - Moves the character.\n"
+"mouse - Looks left and right.\n"
 "***************\n"
 ;
 
@@ -69,7 +57,6 @@ GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 bool fullscreen = false;
 void Win2PPM(int width, int height);
 
-//srand(time(NULL));
 float rand01(){
 	return rand()/(float)RAND_MAX;
 }
