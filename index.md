@@ -19,6 +19,9 @@
  - load existing obj files
  - video
 
+**walls, doors, keys**
+
+![image1](https://user-images.githubusercontent.com/59031606/114966328-f2dea700-9e37-11eb-8210-24e71baa5579.png)
 
 
 **New Maps**
