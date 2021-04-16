@@ -153,27 +153,27 @@ int main(int argc, char *argv[]){
 			}
 			if (cur == 'A' || cur == 'B' || cur == 'C' || cur == 'D' || cur == 'E') {
 				int temp = 0;
+				// coordinate door texture w/ key texture
 				if (cur == 'A') temp = 2;
 				if (cur == 'B') temp = 3;
 				if (cur == 'C') temp = 4;
 				if (cur == 'D') temp = 5;
 				if (cur == 'E') temp = 6;
-				//doors[doorNum] = { i, j, temp, false, static_cast<char>(tolower(cur)) };
 				door newDoor = { i, j, temp, false, static_cast<char>(tolower(cur)) };
 				doors.push_back(newDoor);
 			}
 			if (cur == 'a' || cur == 'b' || cur == 'c' || cur == 'd' || cur == 'e') {
 				int temp = 0;
+				// coordinate key texture w/ door texture
 				if (cur == 'a') temp = 2;
 				if (cur == 'b') temp = 3;
 				if (cur == 'c') temp = 4;
 				if (cur == 'd') temp = 5;
 				if (cur == 'e') temp = 6;
-				//keys[keyNum] = { i, j, temp, false, cur };
 				key newKey = { i, j, temp, false, cur };
 				keys.push_back(newKey);
 			}
-			if (cur == 'S') {
+			if (cur == 'S') {	// initial self position
 				self.x = i;
 				self.y = j;
 			}
@@ -254,6 +254,9 @@ int main(int argc, char *argv[]){
 	models[0] = { startVert1, numVerts1 };
 	models[1] = { startVert2, numVerts2 };
 	models[2] = { startVert3, numVerts3 };
+	
+	// I could've probably avoided using a lot of these, but I finally got extra textures working
+	// and was really proud of myself so I kept all of them.
 	
 	//// Allocate Texture 0 (walls) ///////
 	SDL_Surface* surface = SDL_LoadBMP("models/textures/light-brick.bmp");
@@ -461,18 +464,10 @@ int main(int argc, char *argv[]){
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_q)
 				quit = true; //Exit event loop
 
-
+			// look left/right based on mouse movement
 			if (windowEvent.type == SDL_MOUSEMOTION) {
 				float xOffset = windowEvent.motion.xrel;
 				float yOffset = windowEvent.motion.yrel;
-				//currX = windowEvent.motion.x;
-				//currY = windowEvent.motion.y;
-
-				//float xOffset = lastX - currX;
-				//float yOffset = currY - lastY;
-
-				//lastX = currX;
-				//lastY = currY;
 
 				xOffset *= 0.07f;
 				yOffset *= 0.07f;
@@ -496,7 +491,7 @@ int main(int argc, char *argv[]){
 			}
 
 			
-			// check for collisions
+			// check for collisions & record movement
 			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_w) {
 				glm::vec3 temp = (cameraPos + 0.1f * cameraFront);
 				if (canMove(temp)) {
@@ -540,6 +535,7 @@ int main(int argc, char *argv[]){
 		timePast = SDL_GetTicks()/1000.f;
 		
 
+		// AAALLLLL the textures
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex0);
 		glUniform1i(glGetUniformLocation(texturedShader, "tex0"), 0);
@@ -597,7 +593,8 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-bool canMove(glm::vec3 dirVector) {
+bool canMove(glm::vec3 dirVector) { // check to see if the new position will be allowed
+	// uses a bounding box kind of calculation
 
 	for (auto& d : doors) {
 		if (!d.unlocked) {
@@ -619,7 +616,6 @@ bool canMove(glm::vec3 dirVector) {
 		float minY = w.y - 0.55;
 		float maxY = w.y + 0.55;
 
-		// if that's true, return false
 		bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
 		if (intersects) {
 			return false;
@@ -707,9 +703,9 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 			}
 		}
 
-		if (done) continue;
+		if (done) continue;	// door & key should both be gone at this point
 
-		if (!k.picked_up) {
+		if (!k.picked_up) {	// check to see if we can pick up a key
 			model = glm::mat4(1);
 			model = glm::translate(model, glm::vec3(k.x, k.y, 0.3));
 			model = glm::scale(model, glm::vec3(0.3, 0.3, 0.3));
@@ -726,8 +722,7 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 				k.picked_up = true;
 			}
 		}
-		else {
-			// show in hand
+		else {	// key is picked up (in hand)
 			model = glm::mat4(1);
 			model = glm::translate(model, glm::vec3(self.dirX, self.dirY, 0.2));
 			model = glm::scale(model, glm::vec3(0.3, 0.3, 0.3));
@@ -759,8 +754,6 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 
 	//floor
 	model = glm::mat4(1);
-	//model = glm::translate(model, glm::vec3(mapWidth / 2, mapHeight / 2, -0.75));
-	//model = glm::scale(model, glm::vec3(mapWidth + 1, mapHeight + 1, 0.5));
 	model = glm::translate(model, glm::vec3(mapHeight / 2, mapWidth / 2, -0.75));
 	model = glm::scale(model, glm::vec3(mapHeight + 1, mapWidth + 1, 0.5));
 	scale = glm::vec2(mapWidth*2, mapHeight*2);
@@ -800,7 +793,6 @@ vector<float> loadObjFile(string fileName) {
 		ss >> type;
 
 		if (type[0] == '#') {
-			//cout << "skipping comment line" << endl;
 			continue;
 		}
 		else if (type == "v") {
@@ -866,7 +858,6 @@ vector<float> loadObjFile(string fileName) {
 
 		}
 		else {
-			//cout << "WARNING: unknown command" << endl;
 			continue;
 		}
 	}
