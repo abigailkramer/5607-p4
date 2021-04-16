@@ -41,6 +41,18 @@
 
 \
 &nbsp;
+*one wall and five doors, each looks different - using the following map*
+```
+6 3
+WABCDE
+000000
+00S000
+```
+![image](https://user-images.githubusercontent.com/59031606/114971244-91bbd100-9e41-11eb-9219-825d81a0bb87.png)
+
+
+\
+&nbsp;
 **keys - after picking up the key for the orange door**
 
 ![image](https://user-images.githubusercontent.com/59031606/114970902-f0347f80-9e40-11eb-9b85-acc01a59519d.png)
