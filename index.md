@@ -33,15 +33,33 @@
 
 \
 &nbsp;
-**walls, doors, keys** *(the right key for the door is the same color)*
+**walls & doors** *(the right key for the door is the same color)*
 
 ![image](https://user-images.githubusercontent.com/59031606/114969707-92069d00-9e3e-11eb-87cb-e7c064bac047.png)
 
 ![image](https://user-images.githubusercontent.com/59031606/114969484-16a4eb80-9e3e-11eb-98e0-b3a4988e2f5f.png)
 
+\
+&nbsp;
+**keys - after picking up the key for the orange door**
 
+![image](https://user-images.githubusercontent.com/59031606/114970902-f0347f80-9e40-11eb-9b85-acc01a59519d.png)
+
+
+\
+&nbsp;
 **New Maps**
 
+*used in the "walls & doors" and "keys" pictures*
+```
+6 6
+00G000
+000000
+000000
+AWBWDW
+0d0a00
+00S00b
+```
 
 ```
 7 7
