@@ -25,6 +25,11 @@ Loading .obj files was a little tricky for me. I referred back to HW2 (I think),
  - load existing obj files
  - video
 
+**video**
+
+[demo video](https://youtu.be/6aC8TfpIMdE "demo video")
+
+
 \
 &nbsp;
 **sample file - textured walls/floor/ceiling - on the right very slight example of collision detection**
