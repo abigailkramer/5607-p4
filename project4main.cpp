@@ -446,8 +446,8 @@ int main(int argc, char *argv[]){
 	
 
 	SDL_Event windowEvent;
-	float lastX = 0;
-	float lastY = 0;
+	float lastX = screenWidth / 2;
+	float lastY = screenHeight / 2;
 	float currX = screenWidth / 2;
 	float currY = screenHeight / 2;
 	
@@ -463,38 +463,40 @@ int main(int argc, char *argv[]){
 
 
 			if (windowEvent.type == SDL_MOUSEMOTION) {
-				//float xpos = windowEvent.motion.x;
-				//float ypos = windowEvent.motion.y;
+				float xOffset = windowEvent.motion.xrel;
+				float yOffset = windowEvent.motion.yrel;
+				//currX = windowEvent.motion.x;
+				//currY = windowEvent.motion.y;
 
-				float xOffset = windowEvent.motion.xrel;// xpos - lastX;
-				float yOffset = windowEvent.motion.yrel;// lastY - ypos;
+				//float xOffset = lastX - currX;
+				//float yOffset = currY - lastY;
+
+				//lastX = currX;
+				//lastY = currY;
 
 				xOffset *= 0.07f;
 				yOffset *= 0.07f;
 
 				yaw -= xOffset;
-				pitch -= yOffset;
+				pitch += yOffset;
 
-				//if (pitch > 179.0f) pitch = 179.0f;
-				//if (pitch < -179.0f) pitch = -179.0f;
+				if (pitch > 360.0f) pitch -= 360.0f;
+				if (pitch < -359.0f) pitch += 360.0f;
 
-				//if (yaw > 179.0f) yaw = 179.0f;
-				//if (yaw < -179.0f) yaw = -179.0f;
+				if (yaw > 359.0f) yaw -= 360.0f;
+				if (yaw < -359.0f) yaw += 360.0f;
 
 				glm::vec3 direction;
 				direction.x = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
 				direction.y = sin(glm::radians(yaw));
-				direction.z = 0;// sin(glm::radians(pitch))* cos(glm::radians(yaw));
+				direction.z = 0;
 				cameraFront = glm::normalize(direction);
-
-				//pitch += 0.06f * windowEvent.motion.xrel;
-				//yaw -= 0.06f * windowEvent.motion.yrel;
 
 				SDL_WarpMouseInWindow(window, screenWidth / 2, screenHeight / 2);
 			}
 
 			
-			// check for collisions + avoid changing cameraPos.z
+			// check for collisions
 			if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_w) {
 				glm::vec3 temp = (cameraPos + 0.1f * cameraFront);
 				if (canMove(temp)) {
@@ -599,10 +601,10 @@ bool canMove(glm::vec3 dirVector) {
 
 	for (auto& d : doors) {
 		if (!d.unlocked) {
-			float minX = d.x - 0.5;
-			float maxX = d.x + 0.5;
-			float minY = d.y - 0.5;
-			float maxY = d.y + 0.5;
+			float minX = d.x - 0.55;
+			float maxX = d.x + 0.55;
+			float minY = d.y - 0.55;
+			float maxY = d.y + 0.55;
 
 			bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
 			if (intersects) {
@@ -612,10 +614,10 @@ bool canMove(glm::vec3 dirVector) {
 	}
 
 	for (auto& w : walls) {
-		float minX = w.x - 0.5;
-		float maxX = w.x + 0.5;
-		float minY = w.y - 0.5;
-		float maxY = w.y + 0.5;
+		float minX = w.x - 0.55;
+		float maxX = w.x + 0.55;
+		float minY = w.y - 0.55;
+		float maxY = w.y + 0.55;
 
 		// if that's true, return false
 		bool intersects = (dirVector.x >= minX && dirVector.x <= maxX && dirVector.y >= minY && dirVector.y <= maxY);
@@ -665,7 +667,17 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 	for (auto& d : doors) {
 		if (!d.unlocked) {
 			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(d.x, d.y, -0.5));
+			model = glm::translate(model, glm::vec3(d.x+0.5, d.y, -0.5));
+			scale = glm::vec2(1, 1);
+			glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+			glUniform1i(uniTexID, d.tex);
+			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+			glDrawArrays(GL_TRIANGLES, models[0].start, models[0].numVerts);
+
+			model = glm::mat4(1);
+			model = glm::translate(model, glm::vec3(d.x, d.y-0.5, -0.5));
+			model = glm::rotate(model, 1.567f, glm::vec3(0, 0, 1));
+
 			scale = glm::vec2(1, 1);
 			glUniform2fv(uniScale, 1, glm::value_ptr(scale));
 			glUniform1i(uniTexID, d.tex);
@@ -717,7 +729,7 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 		else {
 			// show in hand
 			model = glm::mat4(1);
-			model = glm::translate(model, glm::vec3(self.dirX, self.dirY, 0.25));
+			model = glm::translate(model, glm::vec3(self.dirX, self.dirY, 0.2));
 			model = glm::scale(model, glm::vec3(0.3, 0.3, 0.3));
 			model = glm::rotate(model, glm::radians(-90.f), glm::vec3(0, 1, 1));
 			
@@ -747,8 +759,10 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 
 	//floor
 	model = glm::mat4(1);
-	model = glm::translate(model, glm::vec3(mapWidth / 2, mapHeight / 2, -0.75));
-	model = glm::scale(model, glm::vec3(mapWidth + 1, mapHeight + 1, 0.5));
+	//model = glm::translate(model, glm::vec3(mapWidth / 2, mapHeight / 2, -0.75));
+	//model = glm::scale(model, glm::vec3(mapWidth + 1, mapHeight + 1, 0.5));
+	model = glm::translate(model, glm::vec3(mapHeight / 2, mapWidth / 2, -0.75));
+	model = glm::scale(model, glm::vec3(mapHeight + 1, mapWidth + 1, 0.5));
 	scale = glm::vec2(mapWidth*2, mapHeight*2);
 	glUniform2fv(uniScale, 1, glm::value_ptr(scale));
 	glUniform1i(uniTexID, 1);
@@ -757,8 +771,8 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 
 	//ceiling
 	model = glm::mat4(1);
-	model = glm::translate(model, glm::vec3(mapWidth / 2, mapHeight / 2, 1.75));
-	model = glm::scale(model, glm::vec3(mapWidth + 1, mapHeight + 1, 0.5));
+	model = glm::translate(model, glm::vec3(mapHeight / 2, mapWidth / 2, 1.75));
+	model = glm::scale(model, glm::vec3(mapHeight + 1, mapWidth + 1, 0.5));
 	scale = glm::vec2(mapWidth*2, mapHeight*2);
 	glUniform2fv(uniScale, 1, glm::value_ptr(scale));
 	glUniform1i(uniTexID, 7);
