@@ -2,6 +2,12 @@
 
 ### Implementation
 
+I started implementing walls, the floor, and the ceiling at the same time. Initially, the floor and ceiling were rendered in by going through for loops for map width and height, and doing glm::translate(model, glm::vec3(i,j, z)) where z was either -1 or 2. I changed this in the end to make the floor and ceiling each just a singular modified cube, and then just modifying the texture scale accordingly. I used that same translate setup for format the whole map, including walls, doors, keys, the user, etc. To achieve this, along with additional object functionality, I made structs for doors, keys, walls, and 'players'. Each of them had the same base elements of an x and y coordinate, which were used to place them on the map using translate. 
+
+The doors and keys both had a texture element (int), an unlocked or picked_up element (bool), and a name element (char). When reading these from the map file, the texture elements were set according to the name (i.e. A or a is always texture 2, B is texture 3, etc), and the bool element was set to false. When going through these objects in drawGeometry() then, I was able to tell whether or not that an object should be rendered, and where. For example, if a door was unlocked, it wasn't rendered anymore. If a key was picked up, the location changed to be "in the user's hand." When the bool values of associated doors and keys were both true, the key that was in the players hand would stop being rendered (they picked up the key and used it on the right door).
+
+Loading .obj files was a little tricky for me. I referred back to HW2 (I think), for parsing a file in c++. I was getting the objects loaded, but they were missing triangles. I tried to account for quads when reading the file, but I kept getting the same problem. I ended up using the suggestion on Slack to just export a file from Wings3D and triangulate it. After doing this, the object files loaded just fine.
+
 ### Required Features:
  - continuous movement
  - walls & doors
