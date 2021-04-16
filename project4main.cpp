@@ -1,6 +1,5 @@
 
-
-const char* INSTRUCTIONS = 
+const char* INSTRUCTIONS =
 "***************\n"
 "The goal of this game is to find the big yellow key in the maze.\n"
 "\n"
@@ -57,6 +56,7 @@ GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 bool fullscreen = false;
 void Win2PPM(int width, int height);
 
+//srand(time(NULL));
 float rand01(){
 	return rand()/(float)RAND_MAX;
 }
@@ -69,10 +69,12 @@ struct modelInfo {
 struct player {
 	float x;
 	float y;
+	float dirX;
+	float dirY;
 };
 
-player self = { 0, 0 };
-player goal = { 0, 0 };
+player self = { 0, 0, 0, 0 };
+player goal = { 0, 0, 0, 0 };
 
 struct door {
 	int x;
@@ -114,7 +116,7 @@ int main(int argc, char *argv[]){
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 
 	//Create a window (offsetx, offsety, width, height, flags)
-	SDL_Window* window = SDL_CreateWindow("My OpenGL Program", 100, 100, screenWidth, screenHeight, SDL_WINDOW_OPENGL);
+	SDL_Window* window = SDL_CreateWindow("My OpenGL Program", 100, 50, screenWidth, screenHeight, SDL_WINDOW_OPENGL);
 
 	//Create a context to draw in
 	SDL_GLContext context = SDL_GL_CreateContext(window);
@@ -523,6 +525,8 @@ int main(int argc, char *argv[]){
 
 		self.x = cameraPos.x;
 		self.y = cameraPos.y;
+		self.dirX = cameraPos.x + cameraFront.x;
+		self.dirY = cameraPos.y + cameraFront.y;
         
 		// Clear the screen to default color
 		glClearColor(.2f, 0.4f, 0.8f, 1.0f);
@@ -683,6 +687,16 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 
 
 	for (auto& k : keys) {
+
+		bool done = false;
+		for (auto& d : doors) {
+			if (k.picked_up && k.door == d.key && d.unlocked) {
+				done = true;;
+			}
+		}
+
+		if (done) continue;
+
 		if (!k.picked_up) {
 			model = glm::mat4(1);
 			model = glm::translate(model, glm::vec3(k.x, k.y, 0.3));
@@ -696,12 +710,22 @@ void drawGeometry(int shaderProgram, modelInfo models[]) {
 			glDrawArrays(GL_TRIANGLES, models[1].start, models[1].numVerts);
 
 			// check if close enough
-			if (abs(self.x - k.x) < 1.f && abs(self.y - k.y) < 1.f) {
+			if (abs(self.x - k.x) < 0.5f && abs(self.y - k.y) < 0.5f) {
 				k.picked_up = true;
 			}
 		}
 		else {
-			continue;
+			// show in hand
+			model = glm::mat4(1);
+			model = glm::translate(model, glm::vec3(self.dirX, self.dirY, 0.25));
+			model = glm::scale(model, glm::vec3(0.3, 0.3, 0.3));
+			model = glm::rotate(model, glm::radians(-90.f), glm::vec3(0, 1, 1));
+			
+			scale = glm::vec2(1, 1);
+			glUniform2fv(uniScale, 1, glm::value_ptr(scale));
+			glUniform1i(uniTexID, k.tex);
+			glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+			glDrawArrays(GL_TRIANGLES, models[1].start, models[1].numVerts);
 		}
 	}
 
