@@ -29,6 +29,11 @@ Loading .obj files was a little tricky for me. I referred back to HW2 (I think),
 
 [demo video](https://youtu.be/6aC8TfpIMdE "demo video")
 
+\
+&nbsp;
+**user input / keyboard & mouse control**
+
+The user navigates the map using w/a/s/d (like minecraft), and looks left/right using the mouse.
 
 \
 &nbsp;
